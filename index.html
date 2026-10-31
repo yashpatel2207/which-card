@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Which Card</title>
+  <meta name="description" content="Tells you which credit card to use where you are.">
+  <meta name="theme-color" content="#E9EDF1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#151B22" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Which Card">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="top">
+      <h1 class="brand">Which card</h1>
+      <button id="refresh" class="icon-btn" data-act="refresh" aria-label="Find places near me again"></button>
+    </header>
+
+    <main>
+      <section id="view-pay" class="view" aria-label="Which card to use"></section>
+      <section id="view-cards" class="view" aria-label="My cards" hidden></section>
+      <section id="view-settings" class="view" aria-label="Settings" hidden></section>
+    </main>
+
+    <nav class="tabs" aria-label="Main">
+      <button data-act="tab" data-view="pay"><span>Pay</span></button>
+      <button data-act="tab" data-view="cards"><span>My cards</span></button>
+      <button data-act="tab" data-view="settings"><span>Settings</span></button>
+    </nav>
+  </div>
+
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-backdrop"></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <div class="sheet-head">
+        <h2 id="sheet-title"></h2>
+        <button id="sheet-close" class="icon-btn" data-act="close-sheet" aria-label="Close"></button>
+      </div>
+      <div class="sheet-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <noscript>Which Card needs JavaScript turned on.</noscript>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
