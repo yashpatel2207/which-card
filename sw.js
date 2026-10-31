@@ -1,5 +1,5 @@
 // Keeps the app working offline. Google Maps requests always go to the network.
-const VERSION = 'whichcard-v3';
+const VERSION = 'whichcard-v4';
 const SHELL = [
   './',
   'index.html',
@@ -11,6 +11,7 @@ const SHELL = [
   'js/rotating.js',
   'js/categories.js',
   'js/places.js',
+  'js/merchants.js',
   'js/store.js',
   'icons/icon-192.png',
   'icons/icon-512.png',

@@ -131,6 +131,7 @@ export function evaluate(card, entry, place, ctx) {
   const pv = pointValue(card, settings);
   const boost = boostFactor(card, settings);
   const value = rate * pv * boost;
+  if (boost > 1) why += `, plus ${Math.round((boost - 1) * 100)}% BofA boost`;
   const blocked = !!(place.networks && !place.networks.includes(card.network));
 
   return { card, entry, rate, value, why, source, notes, blocked, boost, pv, points: isPoints(card) };
@@ -163,7 +164,6 @@ export function headline(r) {
 }
 export function subline(r) {
   if (r.points) return `${trimNum(r.rate)}x ${PROGRAMS[r.card.currency]?.short || 'points'}, valued at ${trimNum(r.pv)}¢ each`;
-  if (r.boost > 1) return `${trimNum(r.rate)}% plus your ${Math.round((r.boost - 1) * 100)}% BofA boost`;
   return '';
 }
 

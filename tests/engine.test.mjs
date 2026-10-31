@@ -171,6 +171,29 @@ test('categorize maps Google types', () => {
   assert.deepEqual(categorize('Giant Food', ['supermarket'], [{ text: 'giant', cat: 'drugstore' }]).cats, ['drugstore']);
 });
 
+test('7-Eleven is not grocery or dining', () => {
+  const types = ['convenience_store', 'food_store', 'grocery_store', 'restaurant', 'food', 'store'];
+  assert.deepEqual(categorize('7-Eleven', types, [], 'convenience_store').cats, ['other']);
+  assert.deepEqual(categorize('7-Eleven', ['convenience_store', 'gas_station', 'store'], [], 'convenience_store').cats, ['gas']);
+});
+
+test('only the main Google type counts', () => {
+  assert.deepEqual(categorize('Panda Garden', ['chinese_restaurant', 'meal_takeaway', 'grocery_store'], [], 'chinese_restaurant').cats, ['dining']);
+  assert.deepEqual(categorize('Giant Food', ['supermarket', 'pharmacy', 'grocery_store'], [], 'supermarket').cats, ['grocery']);
+  assert.deepEqual(categorize('AT&T Store', ['cell_phone_store', 'electronics_store'], [], 'cell_phone_store').cats, ['phone']);
+});
+
+test('store search finds chains and online brands', async () => {
+  const { searchKnown } = await import('../js/merchants.js');
+  assert.equal(searchKnown('cost')[0].name, 'Costco');
+  assert.equal(searchKnown('netflix')[0].cats[0], 'streaming');
+  assert.equal(searchKnown('pepco')[0].cats[0], 'utilities');
+  assert.equal(searchKnown('uber')[0].name, 'Uber');
+  assert.ok(searchKnown('uber').some(m => m.name === 'Uber Eats'));
+  assert.equal(searchKnown('lowes')[0].name, "Lowe's");
+  assert.equal(searchKnown('x').length, 0);
+});
+
 test('summaries read cleanly', () => {
   const s = defaultState();
   for (const e of s.wallet) {

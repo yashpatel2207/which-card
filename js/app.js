@@ -2,7 +2,8 @@ import { CATALOG, PROGRAMS, BOFA_TIERS } from './cards.js';
 import { CATEGORIES, GRID, SPEND_CHOICES, catLabel, catNoun, placeFromGridItem } from './categories.js';
 import * as E from './engine.js';
 import * as S from './store.js';
-import { nearbyPlaces, getPosition, formatDistance } from './places.js';
+import { nearbyPlaces, searchPlacesByText, recategorize, getPosition, formatDistance } from './places.js';
+import { searchKnown, placeFromKnown } from './merchants.js';
 
 // ?date=2026-12-20 lets you preview how the app behaves on another day.
 const params = new URLSearchParams(location.search);
@@ -20,6 +21,12 @@ const ui = {
   sheet: null,
   draft: null,
   lastSearch: 0,
+  lastPos: null,
+  query: '',
+  localMatches: [],
+  searchResults: [],
+  searchStatus: 'idle',
+  searchError: '',
 };
 
 const ctx = () => ({ date: today(), state });
@@ -125,8 +132,8 @@ function resultHTML(place) {
   }
   const top = results[0];
   const sub = E.subline(top);
-  const atLine = place.source === 'gps' || place.merchant ? `at ${place.name}` : `for ${catNoun(place.cats[0])}`;
-  const catLine = place.source === 'gps' ? place.cats.map(catLabel).join(', ') : '';
+  const atLine = place.source !== 'grid' || place.merchant ? `at ${place.name}` : `for ${catNoun(place.cats[0])}`;
+  const catLine = place.source !== 'grid' ? place.cats.map(catLabel).join(', ') : '';
 
   const notes = [...top.notes];
   if (place.note) notes.unshift({ kind: 'info', text: place.note });
@@ -146,15 +153,80 @@ function resultHTML(place) {
       </div>
     </article>
     <p class="why">${esc(top.why)}.${sub ? ` ${esc(sub[0].toUpperCase() + sub.slice(1))}.` : ''}${ties.length ? ` Tied with ${esc(ties.map(t => t.card.name).join(', '))}.` : ''}</p>
-    ${notes.length ? `<ul class="notes">${notes.map(n => `<li class="${n.kind}">${esc(n.text)}</li>`).join('')}</ul>` : ''}`;
+    ${notes.length ? `<ul class="notes">${notes.map(n => `<li class="${n.kind}">${esc(n.text)}</li>`).join('')}</ul>` : ''}
+    ${place.source !== 'grid' ? `<button class="link" data-act="fix-store">Wrong category for ${esc(place.name)}?</button>` : ''}`;
 
   const rest = `${runners ? `<h3 class="h-small">Next best</h3><ol class="runners">${runners}</ol>` : ''}
     ${blocked.length ? `<p class="hint">Not accepted here: ${esc(blocked.map(b => b.card.name).join(', '))}.</p>` : ''}`;
   return { hero, rest };
 }
 
+// ---------- store search ----------
+function resultRow(name, meta, act, i) {
+  return `<li><button type="button" class="wallet-row" data-act="${act}" data-i="${i}">
+    <span class="wr-text"><span class="wr-name">${esc(name)}</span><span class="wr-sum">${esc(meta)}</span></span></button></li>`;
+}
+
+function searchResultsHTML() {
+  const q = ui.query.trim();
+  if (q.length < 2) return '';
+  ui.localMatches = searchKnown(q, state.overrides);
+  let h = '';
+  if (ui.localMatches.length) {
+    h += `<ul class="wallet results">${ui.localMatches.map((m, i) => resultRow(m.name, m.cats.map(catLabel).join(', '), 'pick-known', i)).join('')}</ul>`;
+  }
+  if (!state.settings.apiKey) {
+    if (!ui.localMatches.length) h += '<p class="hint">No match. Add a Maps key in Settings to search any store.</p>';
+    return h;
+  }
+  if (ui.searchStatus === 'searching') return `${h}<p class="status">Searching Google Maps…</p>`;
+  if (ui.searchStatus === 'error') return `${h}<p class="status error">${esc(ui.searchError)}</p>`;
+  if (ui.searchStatus === 'done') {
+    if (!ui.searchResults.length) return `${h}<p class="hint">Google Maps found nothing for “${esc(q)}”.</p>`;
+    return `${h}<h3 class="h-small">From Google Maps</h3><ul class="wallet results">${ui.searchResults.map((p, i) => {
+      const meta = [p.distance != null ? formatDistance(p.distance) : '', p.address, p.cats.map(catLabel).join(', ')].filter(Boolean).join(', ');
+      return resultRow(p.name, meta, 'pick-search', i);
+    }).join('')}</ul>`;
+  }
+  return `${h}<button type="submit" class="link">Search Google Maps for “${esc(q)}”</button>`;
+}
+
+function updateSearchResults() {
+  const el = $('#search-results');
+  if (el) el.innerHTML = searchResultsHTML();
+}
+
+async function runGoogleSearch() {
+  const q = ui.query.trim();
+  if (q.length < 2) return;
+  if (!state.settings.apiKey) { toast('Add your Google Maps key in Settings first.'); return; }
+  ui.searchStatus = 'searching';
+  updateSearchResults();
+  try {
+    ui.searchResults = await searchPlacesByText(state.settings.apiKey, q, ui.lastPos, state.overrides);
+    ui.searchStatus = 'done';
+  } catch (e) {
+    ui.searchStatus = 'error';
+    ui.searchError = e?.message || 'Search didn’t work. Try again.';
+  }
+  updateSearchResults();
+}
+
+function selectPlace(place) {
+  ui.selected = place;
+  ui.gridItem = null;
+  document.activeElement?.blur?.();
+  renderPay();
+  scrollToResult();
+}
+
 function gridHTML() {
   return `<div class="grid"><h2 class="h-small">${ui.places.length ? 'Or pick what you\'re buying' : 'What are you buying?'}</h2>
+    <form id="store-search-form" class="store-search" role="search">
+      <label class="field"><span>Search a store or brand</span>
+        <input type="search" id="store-search" value="${esc(ui.query)}" placeholder="e.g. Target, Netflix, Pepco" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <div id="search-results">${searchResultsHTML()}</div>
+    </form>
     ${GRID.map(g => `<div class="grid-group"><h3>${esc(g.title)}</h3><div class="chips">
       ${g.items.map(item => `<button class="chip${ui.gridItem === item ? ' is-on' : ''}" data-act="pick-grid" data-item="${item}" aria-pressed="${ui.gridItem === item}">${esc(catLabel(item))}</button>`).join('')}
     </div></div>`).join('')}
@@ -177,6 +249,7 @@ async function findPlaces() {
   renderPay();
   try {
     const pos = await getPosition();
+    ui.lastPos = pos;
     ui.placesStatus = 'searching';
     renderPay();
     ui.places = await nearbyPlaces(state.settings.apiKey, pos, state.overrides);
@@ -375,6 +448,24 @@ function editorHTML() {
     <div class="sheet-actions"><button class="btn" data-act="save-card">Save card</button></div>`;
 }
 
+// ---------- "wrong category" sheet ----------
+function fixSheetHTML(name) {
+  const existing = state.overrides.find(f => f.text.toLowerCase() === name.toLowerCase());
+  return `<p class="hint">Pick what ${esc(name)} is. The app will remember it for every store with this name. Card networks decide the real category, so if you’re unsure, check a past statement.</p>
+    <div class="chips">${['other', ...ALL_CATS].map(k => `<button class="chip${existing?.cat === k ? ' is-on' : ''}" data-act="save-fix" data-cat="${k}">${esc(catLabel(k))}</button>`).join('')}</div>
+    ${existing ? '<div class="sheet-actions"><button class="btn ghost" data-act="clear-fix">Go back to Google’s category</button></div>' : ''}`;
+}
+
+function applyFixes() {
+  ui.places = ui.places.map(p => recategorize(p, state.overrides));
+  ui.searchResults = ui.searchResults.map(p => recategorize(p, state.overrides));
+  if (ui.selected?.types) ui.selected = recategorize(ui.selected, state.overrides);
+  else if (ui.selected?.source === 'search') {
+    const fix = state.overrides.find(f => f.text.toLowerCase() === ui.selected.name.toLowerCase());
+    if (fix) ui.selected = { ...ui.selected, cats: [fix.cat], merchant: null, note: 'Using your store fix.' };
+  }
+}
+
 function draftFromCard(card) {
   if (!card) {
     return { id: null, name: '', network: 'Visa', currency: 'cash', base: 1, rules: [], hasChoice: false, choiceRate: 5, choicePick: 1, choicePeriod: 'quarter', choiceOptions: [] };
@@ -484,7 +575,7 @@ function renderSettings() {
 
   <section class="block">
     <h3>Store fixes</h3>
-    <p class="hint">If a store keeps showing the wrong category, tell the app what it is. Costco, Walmart, Target, Whole Foods and other big chains are already handled.</p>
+    <p class="hint">Saved when you tap “Wrong category?” under a recommendation. You can also add one here. Costco, Walmart, Target, CVS and other big chains are already handled.</p>
     ${state.overrides.length ? `<ul class="fixes">${state.overrides.map((f, i) => `<li><span>“${esc(f.text)}” is ${esc(catLabel(f.cat))}</span><button class="link" data-act="remove-fix" data-i="${i}">Remove</button></li>`).join('')}</ul>` : ''}
     <div class="row2">
       <label class="field"><span>Store name contains</span><input type="text" id="fix-text" autocomplete="off" placeholder="e.g. Giant"></label>
@@ -544,6 +635,7 @@ function renderSheet(keepScroll = true) {
   if (s.type === 'add') { title = 'Add a card'; html = addSheetHTML(s.query || ''); }
   if (s.type === 'rot') { title = `5% categories for ${E.quarterLabel(s.quarter)}`; html = rotSheetHTML(s.id, s.quarter); }
   if (s.type === 'edit') { title = ui.draft?.id ? 'Edit rates' : 'Add a custom card'; html = editorHTML(); }
+  if (s.type === 'fix') { title = 'What kind of store is it?'; html = fixSheetHTML(s.name); }
   $('#sheet-title').textContent = title;
   body.innerHTML = html;
   if (keepScroll) body.scrollTop = scroll;
@@ -589,6 +681,26 @@ document.addEventListener('click', e => {
       renderPay();
       scrollToResult();
       break;
+    case 'search-google': runGoogleSearch(); break;
+    case 'pick-known': selectPlace(placeFromKnown(ui.localMatches[Number(el.dataset.i)])); break;
+    case 'pick-search': selectPlace(ui.searchResults[Number(el.dataset.i)]); break;
+    case 'fix-store': if (ui.selected) openSheet({ type: 'fix', name: ui.selected.name }); break;
+    case 'save-fix': {
+      const name = ui.sheet.name;
+      state.overrides = [...state.overrides.filter(f => f.text.toLowerCase() !== name.toLowerCase()), { text: name, cat: el.dataset.cat }];
+      persist(); applyFixes();
+      toast(`Saved. ${name} counts as ${catLabel(el.dataset.cat).toLowerCase()} from now on.`);
+      closeSheet();
+      break;
+    }
+    case 'clear-fix': {
+      const name = ui.sheet.name;
+      state.overrides = state.overrides.filter(f => f.text.toLowerCase() !== name.toLowerCase());
+      persist(); applyFixes();
+      toast('Back to Google’s category. Tap the locate button to refresh.');
+      closeSheet();
+      break;
+    }
     case 'pick-grid':
       ui.gridItem = el.dataset.item;
       ui.selected = placeFromGridItem(el.dataset.item);
@@ -761,8 +873,22 @@ document.addEventListener('change', e => {
   }
 });
 
+document.addEventListener('submit', e => {
+  if (e.target.id === 'store-search-form') {
+    e.preventDefault();
+    runGoogleSearch();
+  }
+});
+
 document.addEventListener('input', e => {
   const el = e.target;
+  if (el.id === 'store-search') {
+    ui.query = el.value;
+    ui.searchStatus = 'idle';
+    ui.searchResults = [];
+    updateSearchResults();
+    return;
+  }
   if (el.id === 'card-search' && ui.sheet?.type === 'add') {
     ui.sheet.query = el.value;
     const pos = el.selectionStart;

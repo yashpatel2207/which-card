@@ -1,8 +1,9 @@
 // Finds nearby businesses with Google Places and turns each into spending categories.
+import { KNOWN, nameMatches, normalize } from './merchants.js';
 
 // ---------- Google place type -> our categories ----------
 const TYPE_MAP = {
-  supermarket: 'grocery', grocery_store: 'grocery', asian_grocery_store: 'grocery', food_store: 'grocery', butcher_shop: 'grocery', market: 'grocery',
+  supermarket: 'grocery', grocery_store: 'grocery', asian_grocery_store: 'grocery',
   warehouse_store: 'wholesale', wholesaler: 'wholesale',
   discount_store: 'superstore',
   fast_food_restaurant: 'fast_food',
@@ -36,56 +37,56 @@ const DINING_TYPES = new Set([
   'bistro', 'cafeteria', 'deli', 'steak_house', 'bar_and_grill', 'cat_cafe', 'chocolate_shop', 'acai_shop', 'confectionery',
 ]);
 
-// ---------- store names that card networks code differently than maps ----------
-export const BUILT_IN_FIXES = [
-  { match: /\bcostco\b/i, cats: ['wholesale'], merchant: 'costco', networks: ['Visa'], keepGas: true, note: 'Costco only takes Visa credit cards.' },
-  { match: /\bsam'?s club\b/i, cats: ['wholesale'] },
-  { match: /\bbj'?s wholesale\b/i, cats: ['wholesale'] },
-  { match: /\bwalmart\b/i, cats: ['superstore'], merchant: 'walmart', keepGas: true },
-  { match: /\btarget\b/i, cats: ['superstore'], merchant: 'target' },
-  { match: /\bwhole foods\b/i, cats: ['grocery'], merchant: 'whole_foods' },
-  { match: /\bamazon fresh\b/i, cats: ['grocery'], merchant: 'amazon_fresh' },
-  { match: /\b(cvs|walgreens|rite aid)\b/i, cats: ['drugstore'] },
-  { match: /\b(home depot|lowe'?s|menards|ace hardware)\b/i, cats: ['home_improvement'] },
-  { match: /\b(best buy|micro center)\b/i, cats: ['electronics'] },
-  { match: /\b(dick'?s sporting|academy sports|rei co-?op)\b/i, cats: ['sporting'] },
-  { match: /\b(macy'?s|kohl'?s|nordstrom|jcpenney|dillard'?s|belk)\b/i, cats: ['department'] },
-  { match: /\b(staples|office depot|officemax)\b/i, cats: ['office'] },
-  { match: /\b(t-mobile|verizon|at&t)\b/i, cats: ['phone'] },
-  { match: /\b(mcdonald'?s|burger king|wendy'?s|taco bell|chick-fil-a|popeyes|kfc|five guys|chipotle|sonic drive-in|jack in the box|arby'?s)\b/i, cats: ['fast_food'] },
-  { match: /\b(starbucks|dunkin|panera)\b/i, cats: ['dining'] },
-  { match: /\b(amc|regal|cinemark)\b/i, cats: ['movies'] },
-  { match: /\b(planet fitness|la fitness|life time|orangetheory|crunch fitness)\b/i, cats: ['gym'] },
-];
+// Store types that card networks don't treat as grocery or dining.
+const NOT_BONUS = new Set(['convenience_store', 'liquor_store', 'food_store', 'market', 'butcher_shop', 'health_food_store']);
 
-export function categorize(name, types = [], userFixes = []) {
+function typeToCat(t) {
+  if (TYPE_MAP[t]) return TYPE_MAP[t];
+  if (DINING_TYPES.has(t) || t.endsWith('_restaurant')) return 'dining';
+  return null;
+}
+
+// Turns a Google place into ONE spending category.
+// Order: your store fixes, known chains, Google's main type, then its other types.
+export function categorize(name, types = [], userFixes = [], primaryType = null) {
   const typeList = types || [];
+  const primary = primaryType || typeList[0] || null;
   const isGas = typeList.includes('gas_station');
 
   for (const fix of userFixes) {
-    if (fix.text && name.toLowerCase().includes(fix.text.toLowerCase())) {
+    if (fix.text && normalize(name).includes(normalize(fix.text))) {
       return { cats: [fix.cat], merchant: null, networks: null, note: 'Using your store fix.' };
     }
   }
-  for (const fix of BUILT_IN_FIXES) {
-    if (fix.match.test(name)) {
-      if (isGas && fix.keepGas) {
-        return { cats: ['gas'], merchant: null, networks: fix.networks || null, note: fix.note || null };
-      }
-      return { cats: [...fix.cats], merchant: fix.merchant || null, networks: fix.networks || null, note: fix.note || null };
+  for (const entry of KNOWN) {
+    if (entry.fix && nameMatches(entry, name)) {
+      if (isGas && entry.keepGas) return { cats: ['gas'], merchant: null, networks: entry.networks, note: entry.note };
+      return { cats: [...entry.cats], merchant: entry.merchant, networks: entry.networks, note: entry.note };
     }
   }
 
-  const cats = [];
-  for (const t of typeList) {
-    if (TYPE_MAP[t]) cats.push(TYPE_MAP[t]);
-    else if (DINING_TYPES.has(t) || t.endsWith('_restaurant')) cats.push('dining');
+  // Convenience stores (7-Eleven, Wawa...) count as gas if they have pumps, otherwise nothing special.
+  if (primary && NOT_BONUS.has(primary)) {
+    return isGas
+      ? { cats: ['gas'], merchant: null, networks: null, note: 'Gas pump purchases count as gas. Inside the store may not.' }
+      : { cats: ['other'], merchant: null, networks: null, note: 'Convenience and specialty food stores usually don’t count as grocery stores.' };
   }
-  if (cats.includes('fast_food') && !cats.includes('dining')) cats.push('dining');
-  let unique = [...new Set(cats)];
-  // A store listed as both a supermarket and a discount superstore codes as a superstore.
-  if (unique.includes('superstore')) unique = unique.filter(c => c !== 'grocery');
-  return { cats: unique.length ? unique : ['other'], merchant: null, networks: null, note: null };
+
+  const main = primary ? typeToCat(primary) : null;
+  if (main) return { cats: [main], merchant: null, networks: null, note: null };
+
+  for (const t of typeList) {
+    if (NOT_BONUS.has(t)) break;
+    const c = typeToCat(t);
+    if (c) return { cats: [c], merchant: null, networks: null, note: null };
+  }
+  return { cats: ['other'], merchant: null, networks: null, note: null };
+}
+
+// Places worth showing: anything with a category, plus shops of any kind.
+function isPayable(place) {
+  if (place.cats[0] !== 'other') return true;
+  return place.types.some(t => t === 'store' || t.endsWith('_store') || t.endsWith('_shop') || t === 'shopping_mall');
 }
 
 // ---------- distance ----------
@@ -165,21 +166,46 @@ export async function nearbyPlaces(apiKey, pos, userFixes = [], radius = 150) {
     return places || [];
   };
 
-  let places = await run(radius);
-  if (places.length === 0) places = await run(500);
+  let places = (await run(radius)).map(p => toPlace(p, pos, userFixes, 'gps')).filter(isPayable);
+  if (places.length === 0) places = (await run(500)).map(p => toPlace(p, pos, userFixes, 'gps')).filter(isPayable);
+  return places.sort((a, b) => a.distance - b.distance);
+}
 
-  return places.map(p => {
-    const loc = { lat: p.location.lat(), lng: p.location.lng() };
-    const types = [p.primaryType, ...(p.types || [])].filter(Boolean);
-    const info = categorize(p.displayName || '', types, userFixes);
-    return {
-      id: p.id,
-      name: p.displayName || 'Unnamed place',
-      types,
-      distance: metersBetween(pos, loc),
-      ...info,
-      source: 'gps',
-    };
-  }).filter(p => !(p.cats.length === 1 && p.cats[0] === 'other' && /route|locality|political|neighborhood|premise|street_address/.test(p.types.join(' '))))
-    .sort((a, b) => a.distance - b.distance);
+// Search Google for a store by name, near you when your location is known.
+export async function searchPlacesByText(apiKey, text, pos, userFixes = []) {
+  const google = await loadGoogle(apiKey);
+  if (authFailed) throw new Error('Google rejected the Maps key.');
+  const { Place } = await google.maps.importLibrary('places');
+  const request = {
+    textQuery: text,
+    fields: ['id', 'displayName', 'primaryType', 'types', 'location', 'formattedAddress'],
+  };
+  if (pos) request.locationBias = { center: { lat: pos.lat, lng: pos.lng }, radius: 30000 };
+  const { places } = await Place.searchByText(request);
+  return (places || []).slice(0, 8).map(p => toPlace(p, pos, userFixes, 'search'));
+}
+
+function toPlace(p, pos, userFixes, source) {
+  const loc = p.location ? { lat: p.location.lat(), lng: p.location.lng() } : null;
+  const types = [...new Set([p.primaryType, ...(p.types || [])].filter(Boolean))];
+  const name = p.displayName || 'Unnamed place';
+  return {
+    id: p.id,
+    name,
+    types,
+    address: shortAddress(p.formattedAddress),
+    distance: pos && loc ? metersBetween(pos, loc) : null,
+    ...categorize(name, types, userFixes, p.primaryType),
+    source,
+  };
+}
+
+function shortAddress(a) {
+  return a ? a.split(',').slice(0, 2).join(',').trim() : '';
+}
+
+// Re-run categories after you add a store fix.
+export function recategorize(place, userFixes) {
+  if (!place.types) return place;
+  return { ...place, ...categorize(place.name, place.types, userFixes, place.types[0]) };
 }

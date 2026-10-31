@@ -258,6 +258,15 @@ code { font-size: 0.9em; overflow-wrap: anywhere; }
   flex: none;
 }
 
+/* ---------- store search ---------- */
+.store-search { margin: 0 0 18px; }
+.store-search .field { margin-top: 0; }
+.store-search .field input { background: var(--surface); }
+.results { margin-top: 8px; }
+.results .wallet-row { padding: 10px 14px; }
+.store-search .h-small { margin: 14px 0 0; font-size: 0.875rem; color: var(--muted); font-weight: 500; }
+.store-search > #search-results > .link { display: block; }
+
 /* ---------- category grid & chips ---------- */
 .grid { margin-top: 8px; }
 .grid-group { margin-bottom: 14px; }
