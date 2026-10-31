@@ -258,6 +258,29 @@ code { font-size: 0.9em; overflow-wrap: anywhere; }
   flex: none;
 }
 
+/* ---------- search box with clear button ---------- */
+.search-wrap { position: relative; display: block; }
+.search-wrap input { padding-right: 44px; }
+.search-wrap input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+.clear-btn {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--line);
+  color: var(--muted);
+  cursor: pointer;
+}
+.clear-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.clear-btn:active { background: var(--muted); color: var(--surface); }
+
 /* ---------- store search ---------- */
 .store-search { margin: 0 0 18px; }
 .store-search .field { margin-top: 0; }

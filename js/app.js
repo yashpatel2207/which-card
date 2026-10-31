@@ -161,6 +161,17 @@ function resultHTML(place) {
   return { hero, rest };
 }
 
+// ---------- search boxes ----------
+// The ✕ inside a search box. Hidden while the box is empty.
+function clearButton(inputId, hidden) {
+  return `<button type="button" class="clear-btn" data-act="clear-search" data-for="${inputId}" aria-label="Clear search"${hidden ? ' hidden' : ''}>${ICON.close}</button>`;
+}
+
+function syncClearButton(input) {
+  const btn = input.parentElement?.querySelector('.clear-btn');
+  if (btn) btn.hidden = !input.value;
+}
+
 // ---------- store search ----------
 function resultRow(name, meta, act, i) {
   return `<li><button type="button" class="wallet-row" data-act="${act}" data-i="${i}">
@@ -224,7 +235,10 @@ function gridHTML() {
   return `<div class="grid"><h2 class="h-small">${ui.places.length ? 'Or pick what you\'re buying' : 'What are you buying?'}</h2>
     <form id="store-search-form" class="store-search" role="search">
       <label class="field"><span>Search a store or brand</span>
-        <input type="search" id="store-search" value="${esc(ui.query)}" placeholder="e.g. Target, Netflix, Pepco" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <span class="search-wrap">
+          <input type="search" id="store-search" value="${esc(ui.query)}" placeholder="e.g. Target, Netflix, Pepco" enterkeyhint="search" autocomplete="off" autocapitalize="off" spellcheck="false">
+          ${clearButton('store-search', !ui.query)}
+        </span></label>
       <div id="search-results">${searchResultsHTML()}</div>
     </form>
     ${GRID.map(g => `<div class="grid-group"><h3>${esc(g.title)}</h3><div class="chips">
@@ -382,7 +396,10 @@ function addSheetHTML(query = '') {
   const qq = query.trim().toLowerCase();
   const list = qq ? all.filter(c => `${c.name} ${c.issuer} ${c.network}`.toLowerCase().includes(qq)) : all;
   return `<label class="field"><span>Search cards</span>
-      <input type="search" id="card-search" value="${esc(query)}" placeholder="Card name or bank" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <span class="search-wrap">
+        <input type="search" id="card-search" value="${esc(query)}" placeholder="Card name or bank" autocomplete="off" autocapitalize="off" spellcheck="false">
+        ${clearButton('card-search', !query)}
+      </span></label>
     <ul class="wallet add-list">${list.map(card => `<li><button class="wallet-row" data-act="add-from-catalog" data-id="${card.id}">
       ${swatch(card)}<span class="wr-text"><span class="wr-name">${esc(card.name)}</span><span class="wr-sum">${esc(card.issuer)}, ${esc(card.network)}</span></span>
     </button></li>`).join('') || `<li class="status">No card matches “${esc(query)}”.</li>`}</ul>
@@ -682,6 +699,23 @@ document.addEventListener('click', e => {
       scrollToResult();
       break;
     case 'search-google': runGoogleSearch(); break;
+    case 'clear-search': {
+      const input = document.getElementById(el.dataset.for);
+      if (el.dataset.for === 'store-search') {
+        ui.query = '';
+        ui.searchStatus = 'idle';
+        ui.searchResults = [];
+        input.value = '';
+        syncClearButton(input);
+        updateSearchResults();
+        input.focus();
+      } else if (ui.sheet?.type === 'add') {
+        ui.sheet.query = '';
+        renderSheet();
+        $('#card-search')?.focus();
+      }
+      break;
+    }
     case 'pick-known': selectPlace(placeFromKnown(ui.localMatches[Number(el.dataset.i)])); break;
     case 'pick-search': selectPlace(ui.searchResults[Number(el.dataset.i)]); break;
     case 'fix-store': if (ui.selected) openSheet({ type: 'fix', name: ui.selected.name }); break;
@@ -886,6 +920,7 @@ document.addEventListener('input', e => {
     ui.query = el.value;
     ui.searchStatus = 'idle';
     ui.searchResults = [];
+    syncClearButton(el);
     updateSearchResults();
     return;
   }

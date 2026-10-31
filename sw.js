@@ -1,5 +1,5 @@
 // Keeps the app working offline. Google Maps requests always go to the network.
-const VERSION = 'whichcard-v4';
+const VERSION = 'whichcard-v5';
 const SHELL = [
   './',
   'index.html',
