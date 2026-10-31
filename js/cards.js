@@ -15,7 +15,7 @@ export const PROGRAMS = {
 
 const BOFA_CCR_OPTIONS = [
   { id: 'gas', label: 'Gas & EV charging', cats: ['gas', 'ev'] },
-  { id: 'online', label: 'Online shopping, cable, streaming, internet & phone', cats: ['online', 'online_grocery', 'streaming', 'internet', 'phone'] },
+  { id: 'online', label: 'Online shopping', cats: ['online', 'online_grocery', 'streaming', 'internet', 'phone'] },
   { id: 'dining', label: 'Dining', cats: ['dining', 'fast_food'] },
   { id: 'travel', label: 'Travel', cats: ['airfare', 'hotel', 'car_rental', 'vacation_rental'] },
   { id: 'drugstore', label: 'Drugstores & pharmacies', cats: ['drugstore'] },
@@ -93,7 +93,10 @@ export const CATALOG = [
     rules: [{ rate: 2, cats: ['grocery', 'wholesale'] }],
     choice: {
       period: 'month', reminder: 'bofa',
-      slots: [{ id: 'three', label: '3% category', pick: 1, rate: 3, options: BOFA_CCR_OPTIONS }],
+      slots: [{
+        id: 'three', label: '3% category', pick: 1, rate: 3, options: BOFA_CCR_OPTIONS,
+        note: 'Online shopping also covers cable, internet, phone plans and streaming, even though BofA’s app shows only “Online Shopping”.',
+      }],
     },
     capNote: '3% and 2% apply to the first $2,500 combined each quarter.',
   },

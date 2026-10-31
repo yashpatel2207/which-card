@@ -236,6 +236,7 @@ function choiceBlocks(card, entry, c) {
       </div>` : ''}
       <div class="chips">${slot.options.map(o => `<button class="chip${picked.includes(o.id) ? ' is-on' : ''}" data-act="toggle-pick" data-id="${card.id}" data-slot="${slot.id}" data-opt="${o.id}" aria-pressed="${picked.includes(o.id)}">${esc(o.label)}</button>`).join('')}</div>
       <p class="count">${picked.length} of ${slot.pick} picked</p>
+      ${slot.note ? `<p class="hint">${esc(slot.note)}</p>` : ''}
     </section>`;
   }
   if (card.capNote) h += `<p class="hint">${esc(card.capNote)}</p>`;
